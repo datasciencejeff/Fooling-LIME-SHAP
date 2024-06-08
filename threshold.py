@@ -9,13 +9,14 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 import numpy as np
 import pandas as pd
-import lime
-import lime.lime_tabular
+# import lime
+# import lime.lime_tabular
+from glime import lime_tabular
 import shap
 from copy import deepcopy
 
 # Flip LIME flag to vary between lime shap
-LIME = False
+LIME = True
 
 # Set up experiment parameters
 params = Params("model_configurations/experiment_params.json")
@@ -86,11 +87,13 @@ def experiment_main(X, y):
 				if LIME:
 					adv_lime = Adversarial_Lime_Model(racist_model_f(), innocuous_model_psi()).\
 								train(xtrain, ytrain, estimator=estimator, feature_names=features, perturbation_multiplier=1)
-					adv_explainer = lime.lime_tabular.LimeTabularExplainer(xtrain, feature_names=adv_lime.get_column_names(), discretize_continuous=False)
+					# adv_explainer = lime.lime_tabular.LimeTabularExplainer(xtrain, feature_names=adv_lime.get_column_names(), discretize_continuous=False)
+					adv_explainer = lime_tabular.LimeTabularExplainer(xtrain, feature_names=adv_lime.get_column_names(), discretize_continuous=False, sample_around_instance=False)
 					
 					formatted_explanations = []
 					for i in range(xtest.shape[0]):
-						exp = adv_explainer.explain_instance(xtest[i], adv_lime.predict_proba).as_list()
+						# exp = adv_explainer.explain_instance(xtest[i], adv_lime.predict_proba).as_list()
+						exp = adv_explainer.explain_instance(xtest[i], adv_lime.predict_proba, num_samples=1000, sampling_method="empirical").as_list()
 						formatted_explanations.append(exp)
 						if i >= 100: break
 
@@ -144,7 +147,8 @@ def experiment_main(X, y):
 	df = pd.DataFrame(data_dict)
 
 	if LIME:
-		limeorshap = 'lime'
+		# limeorshap = 'lime'
+		limeorshap = 'glime'
 	else:
 		limeorshap = 'shap'
 	df.to_csv('data/threshold_results_{}.csv'.format(limeorshap))

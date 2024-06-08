@@ -14,8 +14,9 @@ from sklearn.preprocessing import StandardScaler
 import numpy as np
 import pandas as pd
 
-import lime
-import lime.lime_tabular
+# import lime
+# import lime.lime_tabular
+from glime import lime_tabular
 import shap
 
 from sklearn.cluster import KMeans 
@@ -83,11 +84,13 @@ def experiment_main():
 
 	# Train the adversarial model for LIME with f and psi 
 	adv_lime = Adversarial_Lime_Model(racist_model_f(), innocuous_model_psi()).train(xtrain, ytrain, feature_names=features, perturbation_multiplier=30, categorical_features=categorical)
-	adv_explainer = lime.lime_tabular.LimeTabularExplainer(xtrain, feature_names=adv_lime.get_column_names(), discretize_continuous=False, categorical_features=categorical)
+	# adv_explainer = lime.lime_tabular.LimeTabularExplainer(xtrain, feature_names=adv_lime.get_column_names(), discretize_continuous=False, categorical_features=categorical)
+	adv_explainer = lime_tabular.LimeTabularExplainer(xtrain, feature_names=adv_lime.get_column_names(), discretize_continuous=False, categorical_features=categorical, sample_around_instance=False)
                                                
 	explanations = []
 	for i in range(xtest.shape[0]):
-		explanations.append(adv_explainer.explain_instance(xtest[i], adv_lime.predict_proba).as_list())
+		# explanations.append(adv_explainer.explain_instance(xtest[i], adv_lime.predict_proba).as_list())
+		explanations.append(adv_explainer.explain_instance(xtest[i], adv_lime.predict_proba, num_samples=500, sampling_method="empirical").as_list())
 
 	# Display Results
 	print ("LIME Ranks and Pct Occurances (1 corresponds to most important feature) for one unrelated feature:")
@@ -95,25 +98,25 @@ def experiment_main():
 	print ("Fidelity:", round(adv_lime.fidelity(xtest),2))
 
 	
-	print ('---------------------')
-	print ('Beginning SHAP GERMAN Experiments....')
-	print ('---------------------')
+	# print ('---------------------')
+	# print ('Beginning SHAP GERMAN Experiments....')
+	# print ('---------------------')
 
-	#Setup SHAP
-	background_distribution = KMeans(n_clusters=10,random_state=0).fit(xtrain).cluster_centers_
-	adv_shap = Adversarial_Kernel_SHAP_Model(racist_model_f(), innocuous_model_psi()).train(xtrain, ytrain, 
-			feature_names=features, background_distribution=background_distribution, rf_estimators=100, n_samples=5e4)
-	adv_kerenel_explainer = shap.KernelExplainer(adv_shap.predict, background_distribution,)
-	explanations = adv_kerenel_explainer.shap_values(xtest)
+	# #Setup SHAP
+	# background_distribution = KMeans(n_clusters=10,random_state=0).fit(xtrain).cluster_centers_
+	# adv_shap = Adversarial_Kernel_SHAP_Model(racist_model_f(), innocuous_model_psi()).train(xtrain, ytrain, 
+	# 		feature_names=features, background_distribution=background_distribution, rf_estimators=100, n_samples=5e4)
+	# adv_kerenel_explainer = shap.KernelExplainer(adv_shap.predict, background_distribution,)
+	# explanations = adv_kerenel_explainer.shap_values(xtest)
 
-	# format for display
-	formatted_explanations = []
-	for exp in explanations:
-		formatted_explanations.append([(features[i], exp[i]) for i in range(len(exp))])
+	# # format for display
+	# formatted_explanations = []
+	# for exp in explanations:
+	# 	formatted_explanations.append([(features[i], exp[i]) for i in range(len(exp))])
 
-	print ("SHAP Ranks and Pct Occurances one unrelated features:")
-	print (experiment_summary(formatted_explanations, features))
-	print ("Fidelity:",round(adv_shap.fidelity(xtest),2))
+	# print ("SHAP Ranks and Pct Occurances one unrelated features:")
+	# print (experiment_summary(formatted_explanations, features))
+	# print ("Fidelity:",round(adv_shap.fidelity(xtest),2))
 
 	print ('---------------------')
 
