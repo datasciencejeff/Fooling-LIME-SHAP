@@ -25,6 +25,109 @@ from glime import explanation
 from glime import lime_base
 # from utils.generic_utils import generate_samples_tabular
 
+
+
+import statsmodels.api as sm
+def rejection_sampling_kde(kde, n_samples):
+    var_types = kde.var_type
+    continuous_mask = np.array([vt == 'c' for vt in var_types])
+    categorical_mask = np.array([vt == 'u' for vt in var_types])
+
+    # Define ranges for continuous data
+    min_vals = np.min(kde.data[:, continuous_mask], axis=0)
+    max_vals = np.max(kde.data[:, continuous_mask], axis=0)
+    
+    samples = []
+    accepted = 0
+
+    while accepted < n_samples:
+        # Generate continuous samples
+        cont_samples = np.random.uniform(low=min_vals, high=max_vals)
+
+        # Generate categorical samples for each categorical variable separately
+        cat_samples = []
+        for cat_index in np.where(categorical_mask)[0]:
+            cat_data = kde.data[:, cat_index]
+            cat_samples.append(np.random.choice(cat_data))
+
+        # Combine continuous and categorical samples
+        sample = np.hstack((cont_samples, cat_samples))
+
+        # Evaluate the density at the sample
+        p_sample = kde.pdf(sample)
+
+        # Simplified Q as uniform
+        range_prod = np.prod(max_vals - min_vals)  # Product of ranges for continuous data
+        q_sample = 1.0 / range_prod  # Assumes a simple uniform distribution for Q
+
+        # Assume some k value (this is an arbitrary example, adjust based on your analysis)
+        k = 2
+
+        # Generate a uniform random number for acceptance
+        u = np.random.uniform(0, 1)
+
+        if u < p_sample / (k * q_sample):
+            samples.append(sample)
+            accepted += 1
+
+    return np.array(samples)
+
+
+
+def mcmc_sampling_kde(kde, n_samples, burn_in=100, thinning=10):
+    var_types = kde.var_type
+    continuous_mask = np.array([vt == 'c' for vt in var_types])
+    categorical_mask = np.array([vt == 'u' for vt in var_types])
+
+    # Define ranges for continuous data
+    min_vals = np.min(kde.data[:, continuous_mask], axis=0)
+    max_vals = np.max(kde.data[:, continuous_mask], axis=0)
+    
+    # Initialize the first sample
+    initial_sample = kde.data[0]
+
+    samples = []
+    current_sample = initial_sample
+
+    accepted = 0
+
+    while accepted < n_samples * thinning + burn_in:
+        # Generate new proposal sample
+        proposed_sample = current_sample.copy()
+
+        # Propose changes to continuous variables
+        continuous_indices = np.where(continuous_mask)[0]
+        for ci in continuous_indices:
+            proposed_sample[ci] = np.random.uniform(low=np.min(kde.data[:, ci], axis=0), high=np.max(kde.data[:, ci], axis=0))
+
+        # Propose changes to categorical variables
+        categorical_indices = np.where(categorical_mask)[0]
+        for ci in categorical_indices:
+            cat_data = kde.data[:, ci]
+            proposed_sample[ci] = np.random.choice(cat_data)
+
+        # Evaluate the densities
+        p_current = kde.pdf(current_sample)
+        p_proposed = kde.pdf(proposed_sample)
+
+        # Acceptance probability
+        acceptance_prob = min(1, p_proposed / p_current)
+
+        # Generate a uniform random number for acceptance
+        u = np.random.uniform(0, 1)
+
+        if u < acceptance_prob:
+            current_sample = proposed_sample
+
+        if accepted >= burn_in and (accepted - burn_in) % thinning == 0:
+            samples.append(current_sample.copy())
+
+        accepted += 1
+
+    return np.array(samples)
+
+
+
 class TableDomainMapper(explanation.DomainMapper):
     """Maps feature ids to names, generates table views, etc"""
 
@@ -544,12 +647,19 @@ class LimeTabularExplainer(object):
             elif sampling_method == 'empirical':
 
                 kdt = KDTree(self.training_data, leaf_size=30, metric='euclidean')
-                distances, indices = kdt.query(data_row.reshape(1, -1), k=1+num_samples)  # k=11 to include the point itself
+                distances, indices = kdt.query(data_row.reshape(1, -1), k=1+int(num_samples/2))  # k=11 to include the point itself
                 data = self.training_data[indices[0][1:]]
+                # kde = sm.nonparametric.KDEMultivariate(data=data, var_type='c'*num_cols)
+                kde = sm.nonparametric.KDEMultivariate(data=data, var_type='cuccuuuuuu',bw='cv_ml')
+                # data = rejection_sampling_kde(kde, num_samples)
+                data2 = mcmc_sampling_kde(kde, int(num_samples/2))
+                data = np.vstack((data, data2))
+
                 data = np.array(data)
                 # print(self.training_data[0])
-                # print(data_row)
+                # print(data)
                 # print(tmp)
+
             else:
                 warnings.warn('''Invalid input for sampling_method.
                                  Defaulting to Gaussian sampling.''', UserWarning)
